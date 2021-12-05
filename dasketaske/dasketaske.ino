@@ -19,6 +19,8 @@ Stay kyb!
 #include <SPI.h>
 #include <math.h>
 
+//#include <Adafruit_TFTLCD.h> // Hardware-specific library
+//#include <Fonts/FreeMonoBoldOblique12pt7b.h>
 
 // If we are using the hardware SPI interface, these are the pins (for future ref)
 #define sclk 13
@@ -64,10 +66,9 @@ float old_zeta;
 float w;
 float old_w;
 
-
 #define DT 0.1
 #define MAX_IMAGE 2
-#define MAX_SCREEN 4
+#define MAX_SCREEN 6
 #define SCREEN_SELECT_PIN 3
 #define POT1 1
 
@@ -82,7 +83,7 @@ float old_w;
 
 int image=0;
 
-int screen=2;
+int screen=4;
 int new_screen = 1;
 
 int buttonEdge = 0;
@@ -115,16 +116,160 @@ void setup(void) {
   
 }
 
+/*
+ *  The pung is the the block at bottom that you control
+ *  the ball is a ball that bounces
+ * 
+ */
+void taskepung()
+{
+    static int random;
+    static long points = 0;
+    long resolution = 1000;
+    static int potread;
+    long resX = 128; // X resolution
+    long resY = 128; // Y resolution
+    long pungPositionY = 128-10;
+    long pungLength = 10;
+    static int pungPositionX; // left position of pung. 
+    int newPungPositionX; // Previous pung position
+    static long ballX = (long)(resX>>1) * resolution; 
+    static long ballY = (long)(resY>>1) * resolution+10000;
+    static int ballSize = 2 * resolution;
+    long ballDX_0 = 10;
+    long ballDY_0 = 100;
+    static long lastPotread = 0;
+    const int long potMemory = 10;
+    static long potDiff[potMemory];
+    static int potDiffIndex = 0;
+    static int potDiffIndexIndex = 0;
+   
+    potread = analogRead(POT1);
+    potDiff[potDiffIndex] += abs(potread - lastPotread);
+    
+
+    random += potread;
+
+    lastPotread = potread;
+
+  potDiffIndexIndex++;
+  if (potDiffIndexIndex > 100)
+  {
+    potDiffIndexIndex = 0; 
+    potDiffIndex = (potDiffIndex + 1) % potMemory;
+    potDiff[potDiffIndex] = 0;
+  }
+    int potExitation = 0;
+    for (int i = 0; i < potMemory; i++) {
+      potExitation += potDiff[i];  
+    }
+
+    static long ballDX = ballDX_0;
+    static long ballDY = ballDY_0;    
+    
+    newPungPositionX = potread>>3;
+  points = points +1;
+    
+    if (newPungPositionX+pungLength > resX) {
+      newPungPositionX = resX-pungLength;
+    }
+
+    if (pungPositionX != newPungPositionX)
+    {
+      // remove old pung
+      tft.drawFastHLine(0, pungPositionY, pungPositionX-1, BLACK);
+      tft.drawFastHLine(pungPositionX+pungLength, pungPositionY, resX-(pungPositionX+pungLength), BLACK); 
+      pungPositionX = newPungPositionX;   
+    }
+ 
+    tft.drawFastHLine(newPungPositionX, pungPositionY, 10, GREEN);
+
+    int oldBallX = ballX / resolution;
+    int oldBallY= ballY / resolution;
+    int oldBallSize = ballSize / 1000;
+
+    ballX = ballX + ballDX;
+    ballY = ballY + ballDY;
+
+if (((ballY+ballSize)/1000 > pungPositionY) && (ballX/1000 > newPungPositionX) && (ballX/1000 < newPungPositionX+pungLength))  {
+      ballDY += 50;
+      ballDY = -ballDY;
+      ballY += ballDY;
+
+      if (ballDX > 0)
+        ballDX += potExitation*10;
+
+      if (ballDY < 0)
+        ballDX -= potExitation*10;
+      
+      ballY = (pungPositionY-1)*1000;
+    }
+
+    if (ballX + ballSize >= ((long)resX * resolution)) {
+      ballDX = -ballDX;
+      ballX += ballDX;
+    }
+    if (ballX - ballSize <= 0) {
+      ballDX = -ballDX;
+      ballX += ballDX;
+    }
+
+    if (ballY - ballSize >= ((long)resY * resolution)) {
+      ballDY = -ballDY;
+      ballY += ballDY;
+
+
+
+    // GAME OVER
+
+  //tft.setFont(&FreeMonoBoldOblique12pt7b);
+/*
+  // In global declarations:
+GFXcanvas1 canvas(128, 32); // 128x32 pixel canvas
+
+// In code later:
+static char text[32];
+snprintf(text, 32, "x<=%ld",points);
+canvas.println(text);
+snprintf(text, 32, "GAME OVER");
+canvas.println(text);
+tft.drawBitmap(0, 0, canvas.getBuffer(), 128, 20, BLUE, BLACK); // Copy to screen
+*/
+points = 0;
+ballDX = ballDX_0;
+ballDY = ballDY_0;
+
+
+    delay(3000);
+    tft.fillScreen(BLACK);
+    // RESET X and Y
+    ballX = (long)(resX>>1) * resolution; 
+    ballY = (long)(resY>>1) * resolution+10000;
+
+      
+    } 
+    if (ballY - ballSize <= 0) {
+      ballDY = -ballDY;
+      ballY += ballDY;      
+    }
+
+    tft.drawCircle(oldBallX, oldBallY, oldBallSize, BLACK);   
+    tft.drawCircle((ballX / resolution), (ballY / resolution), (ballSize / resolution), BLUE);
+
+}
+
 void loop() {
     if (millis()-lastAction > 60000) {
       screen = screen+1;
-      Serial.println("Timeout to new screen");
+      //Serial.println("Timeout to new screen");
       screen = capInt(screen,MAX_SCREEN);
       lastAction = millis();
       new_screen = 1;
     }
+
     
     switch (screen) {
+   
       case 0:
         if (new_screen == 1) {
           drawBitmaps(0);
@@ -157,16 +302,19 @@ void loop() {
           drawBitmaps(2);
         }
         new_screen = 0;        
+        break;
+      case 5:
+       taskepung();
         break;         
     }
-    
+
 
     int val = digitalRead(SCREEN_SELECT_PIN);
 
     if ((val == LOW) && (buttonEdge==0)) {
       
-      screen = screen+1;
-      screen = capInt(screen,MAX_SCREEN);
+      screen = (screen+1) % MAX_SCREEN;
+      //%screen = capInt(screen,MAX_SCREEN);
       tft.fillScreen(BLACK);
      
       Serial.print("Switching to screen:");
@@ -238,10 +386,10 @@ void drawSine() {
       Serial.println(zeta);  
   
       for (int y=0;y<128;y++) {
-      int x1 = floor(sin(t-DT+(old_w*3.14*y/128.0))*64)+64;
+      int x1 = floor(cos(t-DT+(old_w*3.14*y/128.0))*64)+64;
       
       tft.drawPixel(y,x1,BLACK);
-      int x2 = floor(sin(t+(w*3.14*y/128.0))*64)+64;
+      int x2 = floor(cos(t+(w*3.14*y/128.0))*64)+64;
       tft.drawPixel(y,x2,YELLOW);
     }    
     t=t+DT;
